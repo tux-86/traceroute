@@ -31,6 +31,7 @@ SYS = sys.platform
 LO_IF = "lo" if SYS.startswith("linux") else "lo0"
 
 results = []   # (status, required, name, args)
+details = {}   # name -> command output of failed tests (shown in the job summary)
 
 
 def run(args, user=None, timeout=90):
@@ -52,6 +53,7 @@ def test(name, args, required=True, rc=0, must=(), mustnot=(), user=None):
           and not any(re.search(m, out, re.M) for m in mustnot))
     results.append(("PASS" if ok else "FAIL", required, name, " ".join(args)))
     if not ok:
+        details[name] = f"$ traceroute.py {' '.join(args)}   (exit code {code}, expected {rc})\n{out[:1500]}"
         kind = "REQUIRED" if required else "info"
         print(f"--- FAIL ({kind}) {name}: rc={code}, expected rc={rc}\n"
               f"    args: {' '.join(args)}\n    " + out[:700].replace("\n", "\n    "))
@@ -116,7 +118,11 @@ def main():
     for label, mode in [("UDP", []), ("ICMP", ["-I"]), ("TCP", ["-T", "-p", "9"])]:
         test(f"--mtu {label}", ["--mtu"] + mode + base + [LO], required=info, must=[r"F=\d+"])
     test("--mtu explicit size", ["--mtu"] + base + [LO, "1400"], required=info, must=[r"F=1400"])
-    test(f"-i {LO_IF}", ["-i", LO_IF] + base + [LO], required=info, must=[HOP])
+    if SYS.startswith(("linux", "darwin", "win")):
+        test(f"-i {LO_IF}", ["-i", LO_IF] + base + [LO], required=info, must=[HOP])
+    else:   # FreeBSD, OpenBSD, ...: -i is unsupported by design and must say so cleanly
+        test(f"-i {LO_IF} (unsupported: clean error)", ["-i", LO_IF] + base + [LO],
+             required=info, rc=1, must=[r"not supported on this platform"])
     test("-A (AS lookup, private address)", ["-A"] + base + [LO], required=info,
          must=[r"^\s*1\s+127\.0\.0\.1 \[\*\]\s+[\d.]+ ms"])
     test("-A with names", ["-A", "-m", "3", "-q", "2", "-w", "1", "localhost"],
@@ -173,6 +179,10 @@ def main():
                 kind = "required" if req else "info"
                 fh.write(f"| {s} | {kind} | `{name}` |\n")
             fh.write("\n")
+            if details:
+                fh.write("#### Output of failed tests\n\n")
+                for name, text in details.items():
+                    fh.write(f"<details><summary>{name}</summary>\n\n```\n{text}\n```\n\n</details>\n\n")
 
     return 1 if f_req else 0
 
