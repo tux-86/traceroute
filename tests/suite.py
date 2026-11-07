@@ -113,8 +113,16 @@ def main():
     test("-z 20 (ms)", ["-z", "20", "-q", "2", "-n", "-m", "3", "-w", "1", LO],
          required=info, must=[HOP])
     test("packet length 1400", base + [LO, "1400"], required=info, must=[r"1400 byte packets", HOP])
-    test("-g loopback", ["-g", LO, "-I", "-n", "-m", "3", "-q", "1", "-w", "1", LO],
-         required=info, must=[HOP])
+    # -g (loose source route): Linux delivers it; macOS/BSD drop such packets by default
+    # (silent stars) or refuse to send ("Permission denied"). Both are acceptable; a crash is not.
+    code, out = run(["-g", LO, "-I", "-n", "-m", "3", "-q", "1", "-w", "1", LO])
+    g_ok = ("Traceback" not in out and
+            ((code == 0 and re.search(r"^\s*1\s+(127\.0\.0\.1\s+[\d.]+ ms|\*)", out, re.M))
+             or (code == 1 and re.search(r"sendto: (Permission denied|Operation not permitted)", out))))
+    results.append(("PASS" if g_ok else "FAIL", info, "-g loopback (delivered or cleanly blocked)", "-g"))
+    if not g_ok:
+        details["-g loopback"] = f"exit code {code}\n{out[:1500]}"
+        print(f"--- FAIL (info) -g loopback: rc={code}\n    " + out[:700].replace("\n", "\n    "))
     for label, mode in [("UDP", []), ("ICMP", ["-I"]), ("TCP", ["-T", "-p", "9"])]:
         test(f"--mtu {label}", ["--mtu"] + mode + base + [LO], required=info, must=[r"F=\d+"])
     test("--mtu explicit size", ["--mtu"] + base + [LO, "1400"], required=info, must=[r"F=1400"])
@@ -137,8 +145,9 @@ def main():
     # Real network (may be filtered on CI runners)
     real = ["-n", "-m", "4", "-q", "2", "-w", "2", "8.8.8.8"]
     for label, mode in [("ICMP", ["-I"]), ("UDP", []), ("TCP", ["-T", "-p", "443"])]:
+        # any hop within the first four that answers (hop 1 may be silent on CI runners)
         test(f"real path {label} (8.8.8.8)", mode + real, required=info,
-             must=[r"^\s*1\s+\d+\.\d+\.\d+\.\d+\s+[\d.]+ ms"])
+             must=[r"^\s*\d+\s+(\* )*\d+\.\d+\.\d+\.\d+\s+[\d.]+ ms"])
     test("real path names", ["-m", "2", "-q", "1", "-w", "2", "8.8.8.8"], required=info,
          must=[r"\(\d+\.\d+\.\d+\.\d+\)"])
 
