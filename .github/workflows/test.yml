@@ -24,6 +24,23 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo -E python3 tests/suite.py
 
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The raw-socket modes (-U, -T) only receive ICMP errors if the firewall lets them in.
+      - name: Allow incoming ICMP errors (Time Exceeded / Destination Unreachable)
+        shell: pwsh
+        run: |
+          New-NetFirewallRule -DisplayName "ICMPv4 Time Exceeded in" -Direction Inbound -Protocol ICMPv4 -IcmpType 11 -Action Allow
+          New-NetFirewallRule -DisplayName "ICMPv4 Unreachable in" -Direction Inbound -Protocol ICMPv4 -IcmpType 3 -Action Allow
+          New-NetFirewallRule -DisplayName "ICMPv6 Time Exceeded in" -Direction Inbound -Protocol ICMPv6 -IcmpType 3 -Action Allow
+          New-NetFirewallRule -DisplayName "ICMPv6 Unreachable in" -Direction Inbound -Protocol ICMPv6 -IcmpType 1 -Action Allow
+      # GitHub's Windows runners run as an administrator, so raw sockets are available.
+      - name: Run the test suite
+        shell: pwsh
+        run: python tests/suite.py
+
   freebsd:
     runs-on: ubuntu-latest
     steps:
