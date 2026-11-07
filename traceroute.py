@@ -773,7 +773,9 @@ def main() -> int:
                         st["plen"] = smaller
                         st["flag"] = f"F={smaller}"
                         continue
-                sys.exit(f"traceroute: sendto: {e.strerror or e}")
+                hint = (" (source routing is probably disabled by the operating system)"
+                        if gateways and e.errno in (errno.EACCES, errno.EPERM) else "")
+                sys.exit(f"traceroute: sendto: {e.strerror or e}{hint}")
         p.deadline = p.sent + a.wait
         if st["flag"]:
             p.pre, st["flag"] = st["flag"], ""
