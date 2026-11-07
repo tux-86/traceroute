@@ -147,7 +147,7 @@ def main():
     for label, mode in [("ICMP", ["-I"]), ("UDP", []), ("TCP", ["-T", "-p", "443"])]:
         # any hop within the first four that answers (hop 1 may be silent on CI runners)
         test(f"real path {label} (8.8.8.8)", mode + real, required=info,
-             must=[r"^\s*\d+\s+(\* )*\d+\.\d+\.\d+\.\d+\s+[\d.]+ ms"])
+             must=[r"^\s*\d+\s+(\*\s+)*\d+\.\d+\.\d+\.\d+\s+[\d.]+ ms"])
     test("real path names", ["-m", "2", "-q", "1", "-w", "2", "8.8.8.8"], required=info,
          must=[r"\(\d+\.\d+\.\d+\.\d+\)"])
 
