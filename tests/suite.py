@@ -86,7 +86,11 @@ def loopback_interface():
     """Interface argument that exists on this machine: a name, or an index on Windows."""
     if WIN:
         try:
-            return str(socket.if_nameindex()[0][0])
+            pairs = socket.if_nameindex()
+            for idx, name in pairs:                      # e.g. "Loopback Pseudo-Interface 1"
+                if "loopback" in name.lower():
+                    return str(idx)
+            return str(pairs[0][0])
         except (OSError, AttributeError, IndexError):
             return "1"
     return "lo" if SYS.startswith("linux") else "lo0"
@@ -105,6 +109,12 @@ def main():
     # On Windows, generic option tests use ICMP mode (the Windows ICMP API).
     M = ["-I"] if WIN else []
     base = ["-n", "-m", "3", "-q", "2", "-w", "1"]
+    # Windows retries a refused TCP connect (~2 s) before reporting it, so TCP probes
+    # to a closed loopback port need a longer wait there.
+    base_tcp = ["-n", "-m", "3", "-q", "2", "-w", "4" if WIN else "1"]
+
+    def b(mode):
+        return base_tcp if ("-T" in mode or "tcp" in mode) else base
     info = False
 
     # ------------------------------------------------------------ REQUIRED --
@@ -114,7 +124,7 @@ def main():
              ("TCP -T", ["-T", "-p", "9"], True), ("-M icmp", ["-M", "icmp"], True),
              ("-M udp", ["-M", "udp"], raw), ("-M tcp", ["-M", "tcp", "-p", "9"], True)]
     for label, mode, req in modes:
-        test(f"mode {label}", mode + base + [LO], required=req, must=[HOP])
+        test(f"mode {label}", mode + b(mode) + [LO], required=req, must=[HOP])
     test("-q 1", M + ["-q", "1", "-n", "-w", "1", LO], must=[r"^\s*1\s+127\.0\.0\.1\s+[\d.]+ ms$"])
     test("-N 1", M + ["-N", "1"] + base + [LO], must=[HOP])
     test("-f 1 -m 3", M + ["-f", "1", "-m", "3", "-n", "-w", "1", LO], must=[HOP])
@@ -161,7 +171,7 @@ def main():
         print(f"--- FAIL (info) -g loopback: rc={code}\n    " + out[:700].replace("\n", "\n    "))
 
     for label, mode in [("UDP", []), ("ICMP", ["-I"]), ("TCP", ["-T", "-p", "9"])]:
-        test(f"--mtu {label}", ["--mtu"] + mode + base + [LO], required=info, must=[r"F=\d+"])
+        test(f"--mtu {label}", ["--mtu"] + mode + b(mode) + [LO], required=info, must=[r"F=\d+"])
     test("--mtu explicit size", ["--mtu"] + M + base + [LO, "1400"], required=info, must=[r"F=1400"])
 
     iface = loopback_interface()
@@ -186,7 +196,7 @@ def main():
 
     # IPv6 loopback
     for label, mode in [("UDP", []), ("ICMP", ["-I"]), ("TCP", ["-T", "-p", "9"])]:
-        test(f"IPv6 {label} ::1", ["-6"] + mode + base + ["::1"], required=info,
+        test(f"IPv6 {label} ::1", ["-6"] + mode + b(mode) + ["::1"], required=info,
              must=[r"^\s*1\s+::1\s+[\d.]+ ms"])
 
     # Real network (may be filtered on CI runners). Any hop within the first four that
