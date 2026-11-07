@@ -1,0 +1,56 @@
+name: test
+
+# Runs tests/suite.py (needs traceroute.py and tests/suite.py at the repo root)
+# on Linux, macOS, FreeBSD and OpenBSD. Raw sockets need root, hence sudo / VM root.
+#
+# "REQUIRED" tests fail the job. Network- and platform-dependent tests are
+# informational: see the job summary for the full table.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo -E python3 tests/suite.py
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo -E python3 tests/suite.py
+
+  freebsd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run in a FreeBSD VM
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: "14.2"
+          usesh: true
+          prepare: |
+            pkg install -y python3
+          run: |
+            python3 tests/suite.py
+
+  # Release and package names change over time; if this job fails to start, check the
+  # vmactions/openbsd-vm README for the current release name. It does not block the others.
+  openbsd:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run in an OpenBSD VM
+        uses: vmactions/openbsd-vm@v1
+        with:
+          release: "7.6"
+          usesh: true
+          prepare: |
+            pkg_add python3
+          run: |
+            python3 tests/suite.py
